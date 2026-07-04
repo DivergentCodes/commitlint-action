@@ -1,0 +1,84 @@
+name: commitlint
+description: >
+  Lint PR titles and commit messages against Conventional Commits using
+  DivergentCodes/commitlint — a zero-dependency Go binary installed from
+  source. No third-party actions beyond GitHub's own.
+author: DivergentCodes
+
+inputs:
+  version:
+    description: commitlint version to install (a tag like v1.0.0, or latest)
+    default: latest
+  pr-title-mode:
+    description: "Lint the PR title: block | warn | off"
+    default: block
+  commits-mode:
+    description: "Lint each PR commit: block | warn | off"
+    default: warn
+  types:
+    description: Comma-separated allowed types (empty = conventional set)
+    default: ""
+  scopes:
+    description: Comma-separated allowed scopes (empty = any)
+    default: ""
+  require-scope:
+    description: Require a (scope) in subjects
+    default: "false"
+  max-subject-length:
+    description: Maximum subject line length
+    default: "72"
+  github-token:
+    description: Token for reading PR commits via the API
+    default: ${{ github.token }}
+
+runs:
+  using: composite
+  steps:
+    - uses: actions/setup-go@v5
+      with:
+        go-version: stable
+        cache: false
+
+    - name: Install commitlint
+      shell: bash
+      run: go install github.com/DivergentCodes/commitlint@${{ inputs.version }}
+
+    - name: Lint PR title
+      if: inputs.pr-title-mode != 'off' && github.event_name == 'pull_request'
+      shell: bash
+      env:
+        COMMITLINT_TYPES: ${{ inputs.types }}
+        COMMITLINT_SCOPES: ${{ inputs.scopes }}
+        COMMITLINT_REQUIRE_SCOPE: ${{ inputs.require-scope }}
+        COMMITLINT_MAX_SUBJECT_LENGTH: ${{ inputs.max-subject-length }}
+      run: commitlint lint --github-pr-title --mode "${{ inputs.pr-title-mode }}"
+
+    - name: Lint PR commits
+      if: inputs.commits-mode != 'off' && github.event_name == 'pull_request'
+      shell: bash
+      env:
+        GH_TOKEN: ${{ inputs.github-token }}
+        COMMITLINT_TYPES: ${{ inputs.types }}
+        COMMITLINT_SCOPES: ${{ inputs.scopes }}
+        COMMITLINT_REQUIRE_SCOPE: ${{ inputs.require-scope }}
+        COMMITLINT_MAX_SUBJECT_LENGTH: ${{ inputs.max-subject-length }}
+        # Merge commits from base-branch syncs aren't squash material.
+        COMMITLINT_ALLOW_REVERT_PREFIX: "true"
+      run: |
+        set -euo pipefail
+        api="${GITHUB_API_URL}/repos/${GITHUB_REPOSITORY}/pulls/${{ github.event.pull_request.number }}/commits?per_page=250"
+        status=0
+        count=0
+        while IFS= read -r encoded; do
+          [ -z "$encoded" ] && continue
+          count=$((count + 1))
+          printf '%s' "$encoded" | base64 -d > /tmp/commit-msg.txt
+          commitlint lint --file /tmp/commit-msg.txt --mode "${{ inputs.commits-mode }}" || status=1
+        done < <(curl -fsSL -H "Authorization: Bearer ${GH_TOKEN}" "$api" |
+                 python3 -c 'import json,sys,base64
+for c in json.load(sys.stdin):
+    msg = c["commit"]["message"]
+    if msg.startswith("Merge "): continue
+    print(base64.b64encode(msg.encode()).decode())')
+        echo "linted $count commit message(s)"
+        exit $status
