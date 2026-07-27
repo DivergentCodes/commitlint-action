@@ -75,10 +75,6 @@ runs:
           printf '%s' "$encoded" | base64 -d > /tmp/commit-msg.txt
           commitlint lint --file /tmp/commit-msg.txt --mode "${{ inputs.commits-mode }}" || status=1
         done < <(curl -fsSL -H "Authorization: Bearer ${GH_TOKEN}" "$api" |
-                 python3 -c 'import json,sys,base64
-for c in json.load(sys.stdin):
-    msg = c["commit"]["message"]
-    if msg.startswith("Merge "): continue
-    print(base64.b64encode(msg.encode()).decode())')
+                 python3 -c 'import json, sys, base64; print("\n".join(base64.b64encode(m.encode()).decode() for m in (c["commit"]["message"] for c in json.load(sys.stdin)) if not m.startswith("Merge ")))')
         echo "linted $count commit message(s)"
         exit $status
