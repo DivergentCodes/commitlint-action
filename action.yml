@@ -28,7 +28,9 @@ inputs:
     description: Maximum subject line length
     default: "72"
   github-token:
-    description: Token for reading PR commits via the API
+    description: >
+      Token for reading PR commits via the API, and for fetching the
+      commitlint module when its repository is private.
     default: ${{ github.token }}
 
 runs:
@@ -41,7 +43,23 @@ runs:
 
     - name: Install commitlint
       shell: bash
-      run: go install github.com/DivergentCodes/commitlint@${{ inputs.version }}
+      env:
+        GH_TOKEN: ${{ inputs.github-token }}
+        COMMITLINT_VERSION: ${{ inputs.version }}
+        # Keep the private module away from the public proxy and checksum
+        # database, which can't reach it and would fail the build.
+        GOPRIVATE: github.com/DivergentCodes
+      run: |
+        set -euo pipefail
+        # commitlint may live in a private repo. Without credentials, git
+        # prompts for a username and dies with "terminal prompts disabled".
+        # Rewrite only DivergentCodes URLs so the token is never offered to
+        # any other host or org. The token stays in the environment rather
+        # than argv, and Actions masks it in logs.
+        git config --global \
+          url."https://x-access-token:${GH_TOKEN}@github.com/DivergentCodes/".insteadOf \
+          "https://github.com/DivergentCodes/"
+        go install "github.com/DivergentCodes/commitlint@${COMMITLINT_VERSION}"
 
     - name: Lint PR title
       if: inputs.pr-title-mode != 'off' && github.event_name == 'pull_request'
