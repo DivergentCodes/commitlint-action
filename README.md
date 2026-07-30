@@ -60,13 +60,27 @@ merge with rebase or merge commits instead, set `commits-mode: block`.
 | `scopes` | any | comma-separated allowed scopes |
 | `require-scope` | `false` | require a `(scope)` |
 | `max-subject-length` | `72` | subject length limit |
+| `github-token` | `github.token` | fetches the commitlint module while its repo is private; unused once public |
 
 ## Permissions
 
 `permissions: contents: read` is sufficient — enough for `actions/checkout`
-to fetch the commits. The action makes no API calls, needs no token, and never
-writes anything. With `commits-mode: off` it reads only the event payload and
-needs no permissions beyond the workflow default.
+to fetch the commits. The action makes no API calls and never writes anything.
+With `commits-mode: off` it reads only the event payload.
+
+While the `commitlint` repository is private, `go install` needs credentials
+to fetch the module. The action rewrites only `github.com/DivergentCodes/`
+URLs to carry `github-token`, so the token is never offered to another host or
+org, and sets `GOPRIVATE` so the public proxy and checksum database are
+bypassed. Pass a token that can read that repo:
+
+```yaml
+      - uses: DivergentCodes/commitlint-action@<full-sha>
+        with:
+          github-token: ${{ secrets.COMMITLINT_READ_TOKEN }}
+```
+
+Once `commitlint` is public this is unnecessary and the default applies.
 
 ## Runner requirements
 
