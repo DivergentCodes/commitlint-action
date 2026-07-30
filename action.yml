@@ -5,9 +5,13 @@ description: >
   source. No third-party actions beyond GitHub's own.
 author: DivergentCodes
 
+branding:
+  icon: check-square
+  color: green
+
 inputs:
   version:
-    description: commitlint version to install (a tag like v1.0.0, or latest)
+    description: commitlint version to install (a tag like v1.1.0, or latest)
     default: latest
   pr-title-mode:
     description: "Lint the PR title: block | warn | off"
@@ -27,58 +31,56 @@ inputs:
   max-subject-length:
     description: Maximum subject line length
     default: "72"
-  github-token:
-    description: Token for reading PR commits via the API
-    default: ${{ github.token }}
 
 runs:
   using: composite
   steps:
-    - uses: actions/setup-go@v5
+    - uses: actions/setup-go@40f1582b2485089dde7abd97c1529aa768e1baff # v5.6.0
       with:
         go-version: stable
         cache: false
 
     - name: Install commitlint
       shell: bash
-      run: go install github.com/DivergentCodes/commitlint@${{ inputs.version }}
+      env:
+        VERSION: ${{ inputs.version }}
+      run: go install "github.com/DivergentCodes/commitlint@${VERSION}"
 
     - name: Lint PR title
-      if: inputs.pr-title-mode != 'off' && github.event_name == 'pull_request'
+      if: ${{ inputs.pr-title-mode != 'off' && github.event_name == 'pull_request' }}
       shell: bash
       env:
+        MODE: ${{ inputs.pr-title-mode }}
         COMMITLINT_TYPES: ${{ inputs.types }}
         COMMITLINT_SCOPES: ${{ inputs.scopes }}
         COMMITLINT_REQUIRE_SCOPE: ${{ inputs.require-scope }}
         COMMITLINT_MAX_SUBJECT_LENGTH: ${{ inputs.max-subject-length }}
-      run: commitlint lint --github-pr-title --mode "${{ inputs.pr-title-mode }}"
+      run: commitlint lint --github-pr-title --mode "$MODE"
 
+    # Lints the PR's own commits with `--range`, which reads them from git and
+    # skips merge commits itself. That needs no API call, so there is no token,
+    # no pagination limit, and no partial-coverage failure mode.
+    #
+    # actions/checkout leaves a shallow clone that does not contain the base
+    # commit, so fetch both endpoints before resolving the range. HEAD on a
+    # pull_request event is GitHub's synthetic merge commit; a range endpoint is
+    # always included, so lint up to the PR's real branch tip instead.
     - name: Lint PR commits
-      if: inputs.commits-mode != 'off' && github.event_name == 'pull_request'
+      if: ${{ inputs.commits-mode != 'off' && github.event_name == 'pull_request' }}
       shell: bash
       env:
-        GH_TOKEN: ${{ inputs.github-token }}
+        MODE: ${{ inputs.commits-mode }}
+        BASE_SHA: ${{ github.event.pull_request.base.sha }}
+        HEAD_SHA: ${{ github.event.pull_request.head.sha }}
         COMMITLINT_TYPES: ${{ inputs.types }}
         COMMITLINT_SCOPES: ${{ inputs.scopes }}
         COMMITLINT_REQUIRE_SCOPE: ${{ inputs.require-scope }}
         COMMITLINT_MAX_SUBJECT_LENGTH: ${{ inputs.max-subject-length }}
-        # Merge commits from base-branch syncs aren't squash material.
-        COMMITLINT_ALLOW_REVERT_PREFIX: "true"
       run: |
         set -euo pipefail
-        api="${GITHUB_API_URL}/repos/${GITHUB_REPOSITORY}/pulls/${{ github.event.pull_request.number }}/commits?per_page=250"
-        status=0
-        count=0
-        while IFS= read -r encoded; do
-          [ -z "$encoded" ] && continue
-          count=$((count + 1))
-          printf '%s' "$encoded" | base64 -d > /tmp/commit-msg.txt
-          commitlint lint --file /tmp/commit-msg.txt --mode "${{ inputs.commits-mode }}" || status=1
-        done < <(curl -fsSL -H "Authorization: Bearer ${GH_TOKEN}" "$api" |
-                 python3 -c 'import json,sys,base64
-for c in json.load(sys.stdin):
-    msg = c["commit"]["message"]
-    if msg.startswith("Merge "): continue
-    print(base64.b64encode(msg.encode()).decode())')
-        echo "linted $count commit message(s)"
-        exit $status
+        if [ ! -d .git ]; then
+          echo "::error::commits-mode needs the repository checked out; add actions/checkout before this action, or set commits-mode: off"
+          exit 1
+        fi
+        git fetch --no-tags --depth=50 origin "$BASE_SHA" "$HEAD_SHA"
+        commitlint lint --range "${BASE_SHA}..${HEAD_SHA}" --mode "$MODE"
