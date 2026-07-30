@@ -11,7 +11,7 @@ branding:
 
 inputs:
   version:
-    description: commitlint version to install (a tag like v1.1.0, or latest)
+    description: commitlint version to install (a tag like v1.1.2, or latest)
     default: latest
   pr-title-mode:
     description: "Lint the PR title: block | warn | off"

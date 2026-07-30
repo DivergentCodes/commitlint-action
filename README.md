@@ -53,7 +53,7 @@ merge with rebase or merge commits instead, set `commits-mode: block`.
 
 | Input | Default | Meaning |
 |---|---|---|
-| `version` | `latest` | commitlint version to `go install`; pin a tag (e.g. `v1.0.0`) in production |
+| `version` | `latest` | commitlint version to `go install`; pin a tag (e.g. `v1.1.2`) in production |
 | `pr-title-mode` | `block` | `block` fails the check, `warn` reports only, `off` skips |
 | `commits-mode` | `warn` | same modes, applied to each PR commit |
 | `types` | conventional set | comma-separated allowed types |
@@ -81,6 +81,56 @@ bypassed. Pass a token that can read that repo:
 ```
 
 Once `commitlint` is public this is unnecessary and the default applies.
+
+## Using this in another DivergentCodes repository
+
+Both repositories are private, which needs two one-time settings. Neither has
+to be made public.
+
+**1. Let other org repos use this action.** Private actions are not callable
+across repositories by default. In **this** repo: Settings → Actions → General
+→ Access → *Accessible from repositories in the DivergentCodes organization*.
+Without it, consuming workflows fail before the action runs.
+
+**2. Provide a token that can read `DivergentCodes/commitlint`.** The default
+`github.token` is scoped to the repository running the workflow, so it cannot
+read a *different* private repo. Create a fine-grained PAT (or GitHub App
+token) with **Contents: read** on `DivergentCodes/commitlint` only, and add it
+as an organization secret named `COMMITLINT_READ_TOKEN`.
+
+Then, in the consuming repository:
+
+```yaml
+name: pr-lint
+on:
+  pull_request:
+    types: [opened, edited, synchronize, reopened]
+permissions:
+  contents: read
+jobs:
+  commitlint:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@<full-sha>
+      - uses: DivergentCodes/commitlint-action@<full-sha>  # v1.0.1
+        with:
+          github-token: ${{ secrets.COMMITLINT_READ_TOKEN }}
+          pr-title-mode: block
+          commits-mode: warn
+```
+
+If `commitlint` later becomes public, drop the `github-token` line and delete
+the secret; nothing else changes.
+
+### Troubleshooting org setup
+
+- **`terminal prompts disabled`** during *Install commitlint* → the token is
+  missing, expired, or lacks Contents: read on `DivergentCodes/commitlint`.
+- **The workflow fails before any step runs**, with a message about the
+  action not being found → step 1 above has not been applied.
+- **`could not read Username`** with a token set → the secret is defined in
+  the wrong scope; organization secrets must be made visible to the consuming
+  repository.
 
 ## Runner requirements
 
