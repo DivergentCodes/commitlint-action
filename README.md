@@ -119,6 +119,12 @@ The major-version alias (`v1`) moves to each new release automatically, so
 `@v1` always resolves to the newest compatible version. Pushing a `v*` tag by
 hand still works for re-cuts.
 
+`action.yml` is checked for loadability — valid YAML *and* the structure GitHub
+requires to run it — before the tag is pushed and again before the alias moves.
+A tag is public and immutable the instant it exists, so validating afterwards
+would be too late: `v1.0.0` permanently names an `action.yml` that cannot be
+loaded, and that is the failure these checks exist to prevent repeating.
+
 Reference a release by SHA (preferred) or tag.
 
 ## License
