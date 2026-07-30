@@ -48,49 +48,23 @@ jobs:
           fi
 
   # Run the action against this very PR. A composite action can pass every
-  # static check and still fail at runtime, so exercise it for real.
-  #
-  # The action authenticates its module fetch, so this no longer depends on
-  # commitlint being public. It does depend on the token being able to read
-  # that repo: the default github.token is scoped to THIS repository, so while
-  # commitlint is private a cross-repo token (COMMITLINT_READ_TOKEN) is
-  # required. Skip when it is absent rather than fail for a reason unrelated
-  # to the code under review — once commitlint is public, neither is needed.
+  # static check and still fail at runtime, so exercise it for real. commitlint
+  # is public, so this needs no token and runs on fork PRs too.
   self-test:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
 
-      - name: check module is reachable
-        id: reach
-        env:
-          TOKEN: ${{ secrets.COMMITLINT_READ_TOKEN }}
-        run: |
-          if curl -fsS -o /dev/null "https://proxy.golang.org/github.com/!divergent!codes/commitlint/@v/list"; then
-            echo "reachable=true" >> "$GITHUB_OUTPUT"
-            echo "commitlint is public; running self-test with the default token"
-          elif [ -n "${TOKEN:-}" ]; then
-            echo "reachable=true" >> "$GITHUB_OUTPUT"
-            echo "commitlint is private; running self-test with COMMITLINT_READ_TOKEN"
-          else
-            echo "reachable=false" >> "$GITHUB_OUTPUT"
-            echo "::notice::self-test skipped: commitlint is private and COMMITLINT_READ_TOKEN is not set"
-          fi
-
       - name: run this action (advisory)
-        if: steps.reach.outputs.reachable == 'true'
         uses: ./
         with:
           # Never fail this repo's CI on a contributor's commit style; the point
           # is to prove the action executes, not to gate on its verdict.
           pr-title-mode: warn
           commits-mode: warn
-          github-token: ${{ secrets.COMMITLINT_READ_TOKEN || github.token }}
 
       - name: run with commits-mode off
-        if: steps.reach.outputs.reachable == 'true'
         uses: ./
         with:
           pr-title-mode: warn
           commits-mode: off
-          github-token: ${{ secrets.COMMITLINT_READ_TOKEN || github.token }}
