@@ -18,16 +18,21 @@ on:
   pull_request:
     types: [opened, edited, synchronize, reopened]
 permissions:
-  pull-requests: read
+  contents: read
 jobs:
   commitlint:
     runs-on: ubuntu-latest
     steps:
-      - uses: DivergentCodes/commitlint-action@<full-sha>  # v1.0.0
+      - uses: actions/checkout@<full-sha>  # required for commits-mode
+      - uses: DivergentCodes/commitlint-action@<full-sha>  # v1.0.1
         with:
           pr-title-mode: block   # squash-merge title is load-bearing
           commits-mode: warn     # advisory; intermediate commits vanish at squash
 ```
+
+`actions/checkout` is required whenever `commits-mode` is not `off`, because
+the action reads the PR's commits from git. With `commits-mode: off` the title
+comes from the event payload and no checkout is needed.
 
 Tag pinning (`@v1`) also works and is fine for internal repos, but SHA
 pinning is recommended for anything security-sensitive.
@@ -55,20 +60,19 @@ merge with rebase or merge commits instead, set `commits-mode: block`.
 | `scopes` | any | comma-separated allowed scopes |
 | `require-scope` | `false` | require a `(scope)` |
 | `max-subject-length` | `72` | subject length limit |
-| `github-token` | `github.token` | reads PR commits via the API |
 
 ## Permissions
 
-`permissions: pull-requests: read` is sufficient — the action reads the PR
-title from the event payload and PR commits via the API with the default
-`github.token`. It does not need `contents` access and never writes anything.
+`permissions: contents: read` is sufficient — enough for `actions/checkout`
+to fetch the commits. The action makes no API calls, needs no token, and never
+writes anything. With `commits-mode: off` it reads only the event payload and
+needs no permissions beyond the workflow default.
 
 ## Runner requirements
 
 Runs on `ubuntu-latest` (and other GitHub-hosted runners) out of the box: it
-uses `actions/setup-go` for the linter and `python3` + `base64` (both
-preinstalled on hosted runners) to decode commit messages from the API. On
-**self-hosted runners**, ensure Go, `python3`, and `base64` are available.
+uses `actions/setup-go` to install the linter and reads commits with `git`. On
+**self-hosted runners**, ensure Go and `git` are available.
 
 ## Troubleshooting
 
@@ -84,3 +88,7 @@ preinstalled on hosted runners) to decode commit messages from the API. On
 Published as **GitHub tagged releases** with changelogs in the release notes.
 Reference a release by SHA (preferred) or tag; there is no committed
 changelog file.
+
+## License
+
+[MIT](LICENSE)
