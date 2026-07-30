@@ -68,11 +68,17 @@ merge with rebase or merge commits instead, set `commits-mode: block`.
 to fetch the commits. The action makes no API calls and never writes anything.
 With `commits-mode: off` it reads only the event payload.
 
-While the `commitlint` repository is private, `go install` needs credentials
-to fetch the module. The action rewrites only `github.com/DivergentCodes/`
-URLs to carry `github-token`, so the token is never offered to another host or
-org, and sets `GOPRIVATE` so the public proxy and checksum database are
-bypassed. Pass a token that can read that repo:
+The action installs the linter with a public `go install` first. If the
+`commitlint` repository is public, that path is used and the module proxy's
+**checksum-database verification applies** — nothing else is needed.
+
+If that fetch fails, the repository is private and credentials are required.
+The action then rewrites only `github.com/DivergentCodes/` URLs to carry
+`github-token`, so the token is never offered to another host or org, and sets
+`GOPRIVATE` for the retry. `GOPRIVATE` bypasses the proxy and checksum
+database — unavoidable for a private module, which is why it is scoped to the
+fallback rather than applied unconditionally. Pass a token that can read the
+repo:
 
 ```yaml
       - uses: DivergentCodes/commitlint-action@<full-sha>

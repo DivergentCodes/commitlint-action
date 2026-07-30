@@ -45,34 +45,42 @@ runs:
         go-version: stable
         cache: false
 
-    # `go install` fetches over HTTPS with no credentials, so while the
-    # commitlint repo is private git prompts for a username and dies with
-    # "terminal prompts disabled". Rewrite only DivergentCodes URLs to carry
-    # the token, so it is never offered to another host or org, and set
-    # GOPRIVATE so the public proxy and checksum database — which cannot see a
-    # private module — are bypassed rather than consulted and failed.
-    #
-    # This is a no-op once commitlint is public: the rewrite still matches, but
-    # a public fetch would have succeeded anyway.
+    # Public first, credentials only as a fallback. The private path has to set
+    # GOPRIVATE, which bypasses the module proxy *and the checksum database* —
+    # unavoidable for a private module, but a real loss of supply-chain
+    # verification. Attempting the public fetch first means a public commitlint
+    # keeps that verification instead of silently forfeiting it.
     - name: Install commitlint
       shell: bash
       env:
         VERSION: ${{ inputs.version }}
         GH_TOKEN: ${{ inputs.github-token }}
-        GOPRIVATE: github.com/DivergentCodes/*
       run: |
         set -euo pipefail
+
+        if go install "github.com/DivergentCodes/commitlint@${VERSION}"; then
+          exit 0
+        fi
+
+        if [ -z "${GH_TOKEN:-}" ]; then
+          echo "::error::could not fetch github.com/DivergentCodes/commitlint@${VERSION}; if that repository is private, pass a token that can read it via the github-token input"
+          exit 1
+        fi
+
+        echo "public fetch failed; retrying with credentials"
         cleanup() {
           git config --global --unset-all \
             url."https://x-access-token:${GH_TOKEN}@github.com/DivergentCodes/".insteadOf || true
         }
         trap cleanup EXIT
-        # The token stays in the environment rather than argv, and Actions
-        # masks it in logs; the trap keeps it out of later steps' git config.
+        # Rewrite only DivergentCodes URLs, so the token is never offered to
+        # another host or org. It stays in the environment rather than argv,
+        # Actions masks it in logs, and the trap keeps it out of later steps.
         git config --global \
           url."https://x-access-token:${GH_TOKEN}@github.com/DivergentCodes/".insteadOf \
           "https://github.com/DivergentCodes/"
-        go install "github.com/DivergentCodes/commitlint@${VERSION}"
+        GOPRIVATE='github.com/DivergentCodes/*' \
+          go install "github.com/DivergentCodes/commitlint@${VERSION}"
 
     - name: Lint PR title
       if: ${{ inputs.pr-title-mode != 'off' && github.event_name == 'pull_request' }}
