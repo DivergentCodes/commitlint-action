@@ -17,8 +17,14 @@ jobs:
       # action.yml shipped invalid YAML in v1.0.0 and v1: an embedded script was
       # dedented out of its block scalar, so GitHub could not load the action at
       # all. Parsing it on every change is the check that would have caught it.
-      - name: action.yml parses
-        run: python3 -c "import yaml,sys; yaml.safe_load(open('action.yml')); print('action.yml parses')"
+      # Structural check, not just a YAML parse: an action.yml can be valid
+      # YAML and still be unloadable (no runs:, a run: step without shell:).
+      - name: action is loadable
+        run: python3 .github/validate-action.py action.yml
+
+      # A guardrail that cannot fail is not a guardrail.
+      - name: validator tests
+        run: python3 .github/validate_action_test.py
 
       - uses: actions/setup-go@40f1582b2485089dde7abd97c1529aa768e1baff # v5.6.0
         with:

@@ -23,6 +23,12 @@ jobs:
         with:
           fetch-depth: 0 # all tags, to find the latest version
 
+      # Gate the tag itself, not just the release. A pushed tag is immutable
+      # and public immediately, so validating afterwards is too late: v1.0.0
+      # still names an action.yml that cannot be loaded, and always will.
+      - name: action is loadable
+        run: python3 .github/validate-action.py action.yml
+
       - name: pick version
         id: pick
         env:
@@ -64,11 +70,11 @@ jobs:
           ref: ${{ needs.version.outputs.tag }}
           fetch-depth: 0
 
-      # An action whose action.yml does not parse cannot be loaded at all, and
-      # a tag is public the moment it is pushed. v1.0.0 shipped exactly that
-      # way, so verify before advertising the release.
-      - name: action.yml parses
-        run: python3 -c "import yaml,sys; yaml.safe_load(open('action.yml')); print('action.yml parses')"
+      # Re-checked at the tag being released, not just at main: a manual tag
+      # push enters here directly, and the major alias must never be moved to
+      # something unloadable.
+      - name: action is loadable
+        run: python3 .github/validate-action.py action.yml
 
       - name: move major alias
         env:
